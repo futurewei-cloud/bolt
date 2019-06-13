@@ -467,7 +467,7 @@ void __kmp_terminate_thread(int gtid) {
   }
 #endif // !KMP_USE_ABT
 #endif
-  __kmp_yield(TRUE);
+  KMP_YIELD(TRUE);
 } //
 
 /* Set thread stack info according to values returned by pthread_getattr_np().
@@ -675,8 +675,6 @@ static void *__kmp_launch_monitor(void *thr) {
   sigset_t new_set;
 #endif /* KMP_BLOCK_SIGNALS */
   struct timespec interval;
-  int yield_count;
-  int yield_cycles = 0;
 
   KMP_MB(); /* Flush all pending memory write invalidates.  */
 
@@ -760,13 +758,6 @@ static void *__kmp_launch_monitor(void *thr) {
 
   KA_TRACE(10, ("__kmp_launch_monitor: #2 monitor\n"));
 
-  if (__kmp_yield_cycle) {
-    __kmp_yielding_on = 0; /* Start out with yielding shut off */
-    yield_count = __kmp_yield_off_count;
-  } else {
-    __kmp_yielding_on = 1; /* Yielding is on permanently */
-  }
-
   while (!TCR_4(__kmp_global.g.g_done)) {
     struct timespec now;
     struct timeval tval;
@@ -801,22 +792,6 @@ static void *__kmp_launch_monitor(void *thr) {
     }
     status = pthread_mutex_unlock(&__kmp_wait_mx.m_mutex);
     KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
-
-    if (__kmp_yield_cycle) {
-      yield_cycles++;
-      if ((yield_cycles % yield_count) == 0) {
-        if (__kmp_yielding_on) {
-          __kmp_yielding_on = 0; /* Turn it off now */
-          yield_count = __kmp_yield_off_count;
-        } else {
-          __kmp_yielding_on = 1; /* Turn it on now */
-          yield_count = __kmp_yield_on_count;
-        }
-        yield_cycles = 0;
-      }
-    } else {
-      __kmp_yielding_on = 1;
-    }
 
     TCW_4(__kmp_global.g.g_time.dt.t_value,
           TCR_4(__kmp_global.g.g_time.dt.t_value) + 1);
@@ -1202,8 +1177,8 @@ retry:
   // Wait for the monitor thread is really started and set its *priority*.
   KMP_DEBUG_ASSERT(sizeof(kmp_uint32) ==
                    sizeof(__kmp_global.g.g_time.dt.t_value));
-  __kmp_wait_yield_4((kmp_uint32 volatile *)&__kmp_global.g.g_time.dt.t_value,
-                     -1, &__kmp_neq_4, NULL);
+  __kmp_wait_4((kmp_uint32 volatile *)&__kmp_global.g.g_time.dt.t_value, -1,
+               &__kmp_neq_4, NULL);
 #endif // KMP_REAL_TIME_FIX
 
 #ifdef KMP_THREAD_ATTR
@@ -1931,16 +1906,7 @@ void __kmp_resume_monitor() {
 
 #endif // !KMP_USE_ABT
 
-void __kmp_yield(int cond) {
-  if (!cond)
-    return;
-#if KMP_USE_MONITOR
-  if (!__kmp_yielding_on)
-    return;
-#else
-  if (__kmp_yield_cycle && !KMP_YIELD_NOW())
-    return;
-#endif
+void __kmp_yield() {
 #if KMP_USE_ABT
   ABT_thread_yield();
 #else
