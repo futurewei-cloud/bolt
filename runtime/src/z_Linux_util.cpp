@@ -1571,7 +1571,7 @@ void __kmp_suspend_initialize(void) {
 #endif
 }
 
-static void __kmp_suspend_initialize_thread(kmp_info_t *th) {
+void __kmp_suspend_initialize_thread(kmp_info_t *th) {
   ANNOTATE_HAPPENS_AFTER(&th->th.th_suspend_init_count);
 #if KMP_USE_ABT
   /* BOLT does not need to initialize them. */
