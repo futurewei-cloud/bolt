@@ -1871,6 +1871,7 @@ typedef struct kmp_internal_control {
 #endif
   int nproc; /* internal control for #threads for next parallel region (per
                 thread) */
+  int thread_limit; /* internal control for thread-limit-var */
   int max_active_levels; /* internal control for max_active_levels */
   kmp_r_sched_t
       sched; /* internal control for runtime schedule {sched,chunk} pair */
@@ -2100,6 +2101,9 @@ typedef struct kmp_local {
 
 #define set__nproc(xthread, xval)                                              \
   (((xthread)->th.th_current_task->td_icvs.nproc) = (xval))
+
+#define set__thread_limit(xthread, xval)                                       \
+  (((xthread)->th.th_current_task->td_icvs.thread_limit) = (xval))
 
 #define set__max_active_levels(xthread, xval)                                  \
   (((xthread)->th.th_current_task->td_icvs.max_active_levels) = (xval))
@@ -2487,6 +2491,26 @@ typedef struct kmp_teams_size {
 } kmp_teams_size_t;
 #endif
 
+// This struct stores a thread that acts as a "root" for a contention
+// group. Contention groups are rooted at kmp_root threads, but also at
+// each master thread of each team created in the teams construct.
+// This struct therefore also stores a thread_limit associated with
+// that contention group, and a counter to track the number of threads
+// active in that contention group. Each thread has a list of these: CG
+// root threads have an entry in their list in which cg_root refers to
+// the thread itself, whereas other workers in the CG will have a
+// single entry where cg_root is same as the entry containing their CG
+// root. When a thread encounters a teams construct, it will add a new
+// entry to the front of its list, because it now roots a new CG.
+typedef struct kmp_cg_root {
+  kmp_info_p *cg_root; // "root" thread for a contention group
+  // The CG root's limit comes from OMP_THREAD_LIMIT for root threads, or
+  // thread_limit clause for teams masters
+  kmp_int32 cg_thread_limit;
+  kmp_int32 cg_nthreads; // Count of active threads in CG rooted at cg_root
+  struct kmp_cg_root *up; // pointer to higher level CG root in list
+} kmp_cg_root_t;
+
 // OpenMP thread data structures
 
 typedef struct KMP_ALIGN_CACHE kmp_base_info {
@@ -2636,6 +2660,7 @@ typedef struct KMP_ALIGN_CACHE kmp_base_info {
 #if KMP_OS_UNIX
   std::atomic<bool> th_blocking;
 #endif
+  kmp_cg_root_t *th_cg_roots; // list of cg_roots associated with this thread
 } kmp_base_info_t;
 
 typedef union KMP_ALIGN_CACHE kmp_info {
@@ -2831,7 +2856,6 @@ typedef struct kmp_base_root {
   kmp_lock_t r_begin_lock;
   volatile int r_begin;
   int r_blocktime; /* blocktime for this root and descendants */
-  int r_cg_nthreads; // count of active threads in a contention group
 } kmp_base_root_t;
 
 typedef union KMP_ALIGN_CACHE kmp_root {
