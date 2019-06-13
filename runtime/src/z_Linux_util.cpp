@@ -1604,10 +1604,10 @@ void __kmp_suspend_initialize(void) {
 
 static void __kmp_suspend_initialize_thread(kmp_info_t *th) {
   ANNOTATE_HAPPENS_AFTER(&th->th.th_suspend_init_count);
-  if (th->th.th_suspend_init_count <= __kmp_fork_count) {
 #if KMP_USE_ABT
   /* BOLT does not need to initialize them. */
 #else
+  if (th->th.th_suspend_init_count <= __kmp_fork_count) {
     /* this means we haven't initialized the suspension pthread objects for this
        thread in this instance of the process */
     int status;
@@ -1617,17 +1617,17 @@ static void __kmp_suspend_initialize_thread(kmp_info_t *th) {
     status = pthread_mutex_init(&th->th.th_suspend_mx.m_mutex,
                                 &__kmp_suspend_mutex_attr);
     KMP_CHECK_SYSFAIL("pthread_mutex_init", status);
-#endif
     *(volatile int *)&th->th.th_suspend_init_count = __kmp_fork_count + 1;
     ANNOTATE_HAPPENS_BEFORE(&th->th.th_suspend_init_count);
   }
+#endif
 }
 
 void __kmp_suspend_uninitialize_thread(kmp_info_t *th) {
-  if (th->th.th_suspend_init_count > __kmp_fork_count) {
 #if KMP_USE_ABT
   /* BOLT does not need to initialize them. */
 #else
+  if (th->th.th_suspend_init_count > __kmp_fork_count) {
     /* this means we have initialize the suspension pthread objects for this
        thread in this instance of the process */
     int status;
@@ -1640,10 +1640,33 @@ void __kmp_suspend_uninitialize_thread(kmp_info_t *th) {
     if (status != 0 && status != EBUSY) {
       KMP_SYSFAIL("pthread_mutex_destroy", status);
     }
-#endif
     --th->th.th_suspend_init_count;
     KMP_DEBUG_ASSERT(th->th.th_suspend_init_count == __kmp_fork_count);
   }
+#endif
+}
+
+// return true if lock obtained, false otherwise
+int __kmp_try_suspend_mx(kmp_info_t *th) {
+#if KMP_USE_ABT
+  return 1;
+#else
+  return (pthread_mutex_trylock(&th->th.th_suspend_mx.m_mutex) == 0);
+#endif
+}
+
+void __kmp_lock_suspend_mx(kmp_info_t *th) {
+#if !KMP_USE_ABT
+  int status = pthread_mutex_lock(&th->th.th_suspend_mx.m_mutex);
+  KMP_CHECK_SYSFAIL("pthread_mutex_lock", status);
+#endif
+}
+
+void __kmp_unlock_suspend_mx(kmp_info_t *th) {
+#if !KMP_USE_ABT
+  int status = pthread_mutex_unlock(&th->th.th_suspend_mx.m_mutex);
+  KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
+#endif
 }
 
 #if !KMP_USE_ABT
@@ -1670,7 +1693,15 @@ static inline void __kmp_suspend_template(int th_gtid, C *flag) {
   /* TODO: shouldn't this use release semantics to ensure that
      __kmp_suspend_initialize_thread gets called first? */
   old_spin = flag->set_sleeping();
-
+#if OMP_50_ENABLED
+  if (__kmp_dflt_blocktime == KMP_MAX_BLOCKTIME &&
+      __kmp_pause_status != kmp_soft_paused) {
+    flag->unset_sleeping();
+    status = pthread_mutex_unlock(&th->th.th_suspend_mx.m_mutex);
+    KMP_CHECK_SYSFAIL("pthread_mutex_unlock", status);
+    return;
+  }
+#endif
   KF_TRACE(5, ("__kmp_suspend_template: T#%d set sleep bit for spin(%p)==%x,"
                " was %x\n",
                th_gtid, flag->get(), flag->load(), old_spin));

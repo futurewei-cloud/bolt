@@ -2913,7 +2913,7 @@ static void __kmp_enable_tasking(kmp_task_team_t *task_team,
   KMP_DEBUG_ASSERT(threads_data != NULL);
 
 #if !KMP_USE_ABT
-  if ((__kmp_tasking_mode == tskm_task_teams) &&
+  if (__kmp_tasking_mode == tskm_task_teams &&
       (__kmp_dflt_blocktime != KMP_MAX_BLOCKTIME)) {
     // Release any threads sleeping at the barrier, so that they can steal
     // tasks and execute them.  In extra barrier mode, tasks do not sleep
