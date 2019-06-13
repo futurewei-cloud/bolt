@@ -634,12 +634,7 @@ static void __kmp_abt_launch_worker(void *thr) {
                     "invoke microtask = %p\n",
                     gtid, (*pteam)->t.t_id, __kmp_tid_from_gtid(gtid),
                     (*pteam)->t.t_pkfn));
-      KMP_STOP_DEVELOPER_EXPLICIT_TIMER(USER_launch_thread_loop);
-      {
-          KMP_TIME_DEVELOPER_BLOCK(USER_worker_invoke);
-          rc = (*pteam)->t.t_invoke(gtid);
-      }
-      KMP_START_DEVELOPER_EXPLICIT_TIMER(USER_launch_thread_loop);
+      rc = (*pteam)->t.t_invoke(gtid);
       KMP_ASSERT(rc);
       KMP_MB();
       KA_TRACE(20, ("__kmp_abt_launch_worker: T#%d(%d:%d) "
